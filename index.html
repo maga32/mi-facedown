@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="content-language" content="kr">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link rel="icon" type="image/webp" href="default/favicon.png">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script> 
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet">
+  <title>공식,사설 워치페이스 다운로드</title>
+  <style type="text/css">
+    body > div { margin: 0 !important }
+    .lightMode { color: black; background-color: white; }
+    .darkMode { color: white; background-color: black; }
+    #selectWatchOption { max-height: calc(-150px + 100vh); overflow-y: scroll; scrollbar-width: none; min-width: 100%; }
+    .dropdown-item:hover { cursor: pointer; }
+    .watchThumbnail { max-width: 40px; max-height: 40px; }
+  </style>
+  <script>
+    // setting start ----------------------------------------------------------------------------
+    let viewPage = 1
+      
+    const nowTime = Date.now()
+    // 시계리스트
+    const watchListUrl = "https://w-peach.duckdns.org/util/notion?url="+encodeURIComponent("https://maga32.notion.site/d6818f3316f74127be7d5b53948651da")+"&"+nowTime
+    let watchList = []
+
+    // 서버리스트
+    const serverListUrl = "https://w-peach.duckdns.org/util/notion?url="+encodeURIComponent("https://maga32.notion.site/d37cfbe7f2c94bd5ade8c6a8816ab913")+"&"+nowTime
+    let serverList = []
+
+    // cors서버
+    const corsServerUrl = "https://w-peach.duckdns.org/util/notion?url="+encodeURIComponent("https://maga32.notion.site/1978de6c334280cfb8e5eb88c13133be")+"&"+nowTime
+    let corsServer = '' // 원하는 CORS우회 서버로 테스트 가능
+    const getCorsUrl = (url) => {
+      let result = ''
+      result = corsServer.includes('replaceHere')
+             ? corsServer.replace('replaceHere', url)
+
+             : corsServer.includes('replaceEncodedHere')
+             ? corsServer.replace('replaceEncodedHere', encodeURI(url))
+
+             : corsServer.includes('replaceEncodedComponentHere')
+             ? corsServer.replace('replaceEncodedComponentHere', encodeURIComponent(url))
+             : ''
+
+      if(!corsServer || !result) {
+        alert('우회서버조회 오류')
+        return false
+      }
+
+      return result
+    }
+    // setting end ----------------------------------------------------------------------------
+
+    // searching start ----------------------------------------------------------------------------
+    const search = (page) => {
+      if(!$("#selectServer").val()) {
+        alert("서버를 선택해주세요.")
+        return false
+      } else if(!$("#selectWatch").val()) {
+        alert("기종을 선택해주세요.")
+        return false
+      }
+      
+      if(page) viewPage = page
+      if(page==1) $("#faceList").empty()
+      
+      searching()
+      
+      const origUrl = $("#selectServer").val().includes("watch-appstore.iot.mi.com")
+                    ? $("#selectServer").val() + `get_watchface_list?size=500&model=${$("#selectWatch").val()}&page=${viewPage}`
+                    : $("#selectServer").val() + `index?data={"model":"${$("#selectWatch").val()}","page":${viewPage},"size":500}`
+
+      const corsUrl = getCorsUrl(origUrl)
+      if(!corsUrl) return
+
+      $.ajax({
+        url: corsUrl,
+        type: "get",
+        success: (result) => {
+          try {
+            // 공식서버의 경우 json화 필요
+            let list = $("#selectServer").val().includes("watch-appstore.iot.mi.com")
+                      ? (typeof(result) == 'string' ? JSON.parse(result).data.feed_watchface_list : result.data.feed_watchface_list)
+                      : result.result.feed_watchface_list
+
+            showList(list)
+          } catch(e) {
+            alert("오류발생1 : " + JSON.stringify(e))
+            viewMore()
+          }
+        },
+        error: (e) => {
+          console.log(e)
+          try {
+            // 사설서버
+            let list = JSON.parse(e.responseText.replace(/\n/g, "").replace(/\r/g, "").replace(/:,/g,':"",')).result.feed_watchface_list
+
+            showList(list)
+          } catch(f) {
+            alert("오류발생1 : " + JSON.stringify(e) + ", 오류발생2 : " + JSON.stringify(f))
+            viewMore()
+          }
+        },
+        complete: () => {
+          $(".search").prop("disabled", false)
+        }
+      })
+      
+    }
+    
+    const viewMore = () => {
+      $("#more").removeClass("d-none")
+      $("#noMore").addClass("d-none")
+      $("#searching").addClass("d-none")
+    }
+    
+    const viewNoMore = () => {
+      $("#noMore").removeClass("d-none")
+      $("#more").addClass("d-none")
+      $("#searching").addClass("d-none")
+    }
+    
+    const searching = () => {
+      $("#noMore").addClass("d-none")
+      $("#more").addClass("d-none")
+      $("#searching").removeClass("d-none")
+      $(".search").prop("disabled", true)
+    }
+
+    const showList = (list) => {
+      let viewList = []
+
+      if(list[0]) {
+        // 사설서버일경우 공식 워치페이스 제외
+        if(!$("#selectServer").val().includes("watch-appstore.iot.mi.com")) {
+
+          $.each(list, (i, param) => {
+            if(!param.icon.includes("mi-img.com")) viewList.push(param)
+          })
+
+          list = viewList
+        }
+
+        // 목록생성
+        $.each(list, (i, param) => { $("#faceList").append(makeList(param)) })
+        
+        viewMore()
+        viewPage++
+      } else {
+        viewNoMore()
+      }
+
+    }
+    // searching end ----------------------------------------------------------------------------
+
+    // function start ----------------------------------------------------------------------------
+    const downFile = (link, id) => {
+      // 공식서버
+      if(link) {
+        window.open(link, "_blank")
+
+      // m0tral 사설서버
+      } else {
+        const origUrl = $("#selectServer").val() + `detail?data={"id":"${id}","model":"${$("#selectWatch").val()}"}`
+        const corsUrl = getCorsUrl(origUrl)
+        if(!corsUrl) return
+
+        $.ajax({
+          url: corsUrl,
+          type: "get",
+          async:false,
+          success: (result) => {
+            let config_file = result.result.watch_face.config_file || result.result.watch_face.config_file_v2
+            link = config_file
+          },
+          error: (e) => {
+            try {
+              console.log("e", e)
+              let watch_face = JSON.parse(e.responseText.replace(/\n/g, "").replace(/\r/g, "")).result.watch_face
+              link = watch_face.config_file || watch_face.config_file_v2
+            } catch(f) {
+              console.log("f", f)
+              alert("오류발생 : " + JSON.stringify(e))
+            }
+          },
+          complete: () => {
+            if(!link || link.includes("buy")) {
+              alert("유료구매상품 혹은 다운로드가 불가능한 페이스입니다.")
+            } else {
+              window.open(link, "_blank")
+            }
+          }
+        })
+
+      }
+
+      // 콜백
+      adCallback()
+    }
+    
+    const makeList = (param) => {
+      let str = `
+        <div class="col-6 col-md-4 col-lg-3 col-xl-2 p-2">
+          <div class="border rounded p-3">
+            <img class="img-fluid w-100" role="button" src="${param.icon}" id="img_${param.id}" onclick="downFile('${param.config_file || param.config_file_v2 || ''}', '${param.id}')">
+            <div class='text-center mt-2'>
+      `
+
+      if(param.aod_icon) {
+        str += `
+              <span class="badge text-bg-secondary" role="button" data-img="${param.icon}" data-aod="${param.aod_icon}" id="aod_${param.id}" onclick="viewAod('${param.id}')"> AOD </span>
+        `
+      }
+
+      str += `
+              ${param.display_name}
+            </div>
+
+            <div class='text-center mt-2'>
+              Price: ${param.price || 'free'}
+            </div>
+
+          </div>
+        </div>
+      `
+
+      return str
+    }
+    
+    const viewAod = (id) => {
+      $("#img_"+id).attr('src', ($("#img_"+id).attr('src') == $("#aod_"+id).attr('data-img')) ? $("#aod_"+id).attr('data-aod') :$("#aod_"+id).attr('data-img') )
+    }
+
+    const changeOption = (prod, name) => {
+      $("#selectWatchName").text(name)
+      $("#selectWatch").val(prod)
+    }
+
+    const modeChange = async () => {
+      if($("#mode").text() == "Dark") {
+        $(".lightMode").addClass("darkMode").removeClass("lightMode")
+        $("#mode").text("Light")
+        window.localStorage.setItem("miFaceDownMode", "darkMode")
+      } else {
+        $(".darkMode").addClass("lightMode").removeClass("darkMode")
+        $("#mode").text("Dark")
+        window.localStorage.setItem("miFaceDownMode", "lightMode")
+      }
+    }
+
+    let adCallback = () => {
+      console.log("download!")
+    }
+    // function end ----------------------------------------------------------------------------
+
+    $(document).ready(async () => {
+      page = 1
+
+      // watchList
+      $.ajax({
+        url: watchListUrl,
+        type: "get",
+        async:false,
+        success: (result) => {
+          watchList = result
+        },
+        error: (e) => {
+          alert("시계 목록조회 오류 : " + JSON.stringify(e))
+        }
+      })
+
+      $.each(watchList ,(i, li) => {
+        $("#selectWatchOption").append(`
+          <li>
+            <div class="dropdown-item darkMode" onclick="changeOption('${li.prod}', '${li.name}')">
+              <img class="watchThumbnail" src="static/${li.prod}.webp" onerror="this.onerror=()=>{this.style.display='none'}; this.src='default/${li.category}.webp'">${li.name}
+            </div>
+          </li>`
+        )
+      })
+
+      // serverList
+      $.ajax({
+        url: serverListUrl,
+        type: "get",
+        async:false,
+        success: (result) => {
+          serverList = result
+        },
+        error: (e) => {
+          alert("서버 목록조회 오류 : " + JSON.stringify(e))
+        }
+      })
+
+      $.each(serverList ,(i, li) => {
+        $("#selectServer").append("<option value='" + li.site + "'>" + li.name + "</option>")
+      })
+
+      // corsUrl
+      $.ajax({
+        url: corsServerUrl,
+        type: "get",
+        async:false,
+        success: (result) => {
+          corsServer = corsServer || result[0]?.corsLink
+        },
+        error: (e) => {
+          alert("우회서버조회 오류 : " + JSON.stringify(e))
+        }
+      })
+      
+      if("lightMode" == window.localStorage.getItem("miFaceDownMode")) await modeChange()
+    })
+
+  </script>
+</head>
+<body class="darkMode">
+  <div class="row p-3 pb-5">
+    <div class="col-12 row fixed-top ms-0 px-0 pt-3 pb-2 darkMode">
+
+      <div class="col-9 row ms-0">
+        <div class="col-12 col-lg-6 mb-1">
+          <select class="form-select darkMode" id="selectServer">
+            <option selected value="">서버선택</option>
+          </select>
+        </div>
+        <div class="col-12 col-lg-6 mb-1">
+          <div class="dropdown">
+            <input id="selectWatch" type="hidden">
+            <button id="selectWatchName" class="form-select darkMode text-start" data-bs-toggle="dropdown">기종선택</button>
+            <ul class="dropdown-menu darkMode" id="selectWatchOption">
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-3 row ms-0 px-0">
+        <div class="col-12 col-lg-6 mb-1 d-grid">
+          <button class="btn btn-outline-secondary" onclick="modeChange()" id="mode">Light</button>
+        </div>
+        <div class="col-12 col-lg-6 mb-1 d-grid">
+          <button class="btn btn-secondary search" onclick="search(1)">
+            검색
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    
+    <!-- 목록 -->
+    <div class="col-12 row pe-0 pt-5 mt-5 mt-lg-0" id="faceList">
+    </div>
+    
+    <div class="col-12 p-3 d-grid">
+      <button class="btn btn-secondary search d-none" id="more" onclick="search()">
+        더보기
+      </button>
+      <div class="py-4 d-grid text-center" id="noMore">
+        더이상 찾을 페이스가 없습니다.
+      </div>
+      <div class="py-4 d-grid text-center d-none" id="searching">
+        <span>
+          로딩중... <i class="fa fa-spinner fa-spin fa-fw"></i>
+        </span>
+      </div>
+    </div>
+  </div>
+</body>
+
+<!--광고추가부분-->
+<script src="ad.js"></script>
+</html>

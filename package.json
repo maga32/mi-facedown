@@ -1,0 +1,10 @@
+{
+  "name": "mi-facedown",
+  "version": "4.0.0",
+  "scripts": {
+    "build": "npm install && node download.js"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}
