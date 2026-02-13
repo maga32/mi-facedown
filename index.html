@@ -35,16 +35,17 @@
     const corsServerUrl = "https://w-peach.duckdns.org/util/notion?url="+encodeURIComponent("https://maga32.notion.site/1978de6c334280cfb8e5eb88c13133be")+"&"+nowTime
     let corsServer = '' // 원하는 CORS우회 서버로 테스트 가능
     const getCorsUrl = (url) => {
-      let result = ''
-      result = corsServer.includes('replaceHere')
-             ? corsServer.replace('replaceHere', url)
+      url += "&" + Date.now()
 
-             : corsServer.includes('replaceEncodedHere')
-             ? corsServer.replace('replaceEncodedHere', encodeURI(url))
+      let result = corsServer.includes('replaceHere')
+                 ? corsServer.replace('replaceHere', url)
 
-             : corsServer.includes('replaceEncodedComponentHere')
-             ? corsServer.replace('replaceEncodedComponentHere', encodeURIComponent(url))
-             : ''
+                 : corsServer.includes('replaceEncodedHere')
+                 ? corsServer.replace('replaceEncodedHere', encodeURI(url))
+
+                 : corsServer.includes('replaceEncodedComponentHere')
+                 ? corsServer.replace('replaceEncodedComponentHere', encodeURIComponent(url))
+                 : ''
 
       if(!corsServer || !result) {
         alert('우회서버조회 오류')
@@ -57,7 +58,7 @@
 
     // searching start ----------------------------------------------------------------------------
     const search = (page) => {
-      if(!$("#selectServer").val()) {
+      if(!$("#selectServer").val() || !$("#selectServer").val().includes("http")) {
         alert("서버를 선택해주세요.")
         return false
       } else if(!$("#selectWatch").val()) {
@@ -158,6 +159,15 @@
     // searching end ----------------------------------------------------------------------------
 
     // function start ----------------------------------------------------------------------------
+    const serverSelect = (val) => {
+      const outerLink = serverList.find(li => li.site == val)?.etc
+      if(outerLink) window.open(outerLink,'_blank','noopener,noreferrer')
+
+      if(!val.includes('http')) {
+        $("#selectServer").val('')
+      }
+    }
+
     const downFile = (link, id) => {
       // 공식서버
       if(link) {
@@ -314,6 +324,9 @@
       })
       
       if("lightMode" == window.localStorage.getItem("miFaceDownMode")) await modeChange()
+      
+      viewNoMore()
+      $(".search").prop("disabled", false)
     })
 
   </script>
@@ -324,7 +337,7 @@
 
       <div class="col-9 row ms-0">
         <div class="col-12 col-lg-6 mb-1">
-          <select class="form-select darkMode" id="selectServer">
+          <select class="form-select darkMode" id="selectServer" onchange="serverSelect(this.value)">
             <option selected value="">서버선택</option>
           </select>
         </div>
@@ -343,7 +356,7 @@
           <button class="btn btn-outline-secondary" onclick="modeChange()" id="mode">Light</button>
         </div>
         <div class="col-12 col-lg-6 mb-1 d-grid">
-          <button class="btn btn-secondary search" onclick="search(1)">
+          <button class="btn btn-secondary search" onclick="search(1)" disabled>
             검색
           </button>
         </div>
@@ -359,10 +372,10 @@
       <button class="btn btn-secondary search d-none" id="more" onclick="search()">
         더보기
       </button>
-      <div class="py-4 d-grid text-center" id="noMore">
+      <div class="py-4 d-grid text-center d-none" id="noMore">
         더이상 찾을 페이스가 없습니다.
       </div>
-      <div class="py-4 d-grid text-center d-none" id="searching">
+      <div class="py-4 d-grid text-center" id="searching">
         <span>
           로딩중... <i class="fa fa-spinner fa-spin fa-fw"></i>
         </span>
