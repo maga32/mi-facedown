@@ -202,7 +202,7 @@
 
       // m0tral 사설서버
       } else {
-        const origUrl = $("#selectServer").val() + `detail?data={"id":"${id}","model":"${$("#selectWatch").val()}"}`
+        const origUrl = $("#selectServer").val() + `download?data={"did":"false","id":"${id}","model":"${$("#selectWatch").val()}"}`
         const corsUrl = getCorsUrl(origUrl)
         if(!corsUrl) return
 
@@ -211,14 +211,14 @@
           type: "get",
           async:false,
           success: (result) => {
-            let config_file = result.result.watch_face.config_file || result.result.watch_face.config_file_v2
+            let config_file = result.result.download_info.config_file || result.result.download_info.config_file_v2
             link = config_file
           },
           error: (e) => {
             try {
               console.log("e", e)
-              let watch_face = JSON.parse(e.responseText.replace(/\n/g, "").replace(/\r/g, "")).result.watch_face
-              link = watch_face.config_file || watch_face.config_file_v2
+              let download_info = JSON.parse(e.responseText.replace(/\n/g, "").replace(/\r/g, "")).result.download_info
+              link = download_info.config_file || download_info.config_file_v2
             } catch(f) {
               console.log("f", f)
               alert("오류발생 : " + JSON.stringify(e))
