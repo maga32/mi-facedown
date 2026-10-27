@@ -48,6 +48,10 @@
     #selectWatchOption { max-height: calc(-150px + 100vh); overflow-y: scroll; scrollbar-width: none; min-width: 100%; }
     .dropdown-item:hover { cursor: pointer; }
     .watchThumbnail { max-width: 40px; max-height: 40px; }
+    .description { list-style: none; cursor: pointer; }
+    #patchListDetail:has(#patchList:empty) { display: none; }
+    #appListDetail:has(#appList:empty) { display: none; }
+    .word-break-all { word-break: break-all; }
   </style>
   <script>
     // setting start ----------------------------------------------------------------------------
@@ -66,16 +70,19 @@
     const corsServerUrl = "https://w-peach.duckdns.org/util/notion?url="+encodeURIComponent("https://maga32.notion.site/1978de6c334280cfb8e5eb88c13133be")+"&"+nowTime
     let corsServer = '' // 원하는 CORS우회 서버로 테스트 가능
     const getCorsUrl = (url) => {
-      url += "&" + Date.now()
+      const refreshUrl = url + "&" + Date.now()
 
-      let result = corsServer.includes('replaceHere')
-                 ? corsServer.replace('replaceHere', url)
+      let result = url.includes('raw.githubusercontent.com')
+                 ? url
+
+                 : corsServer.includes('replaceHere')
+                 ? corsServer.replace('replaceHere', refreshUrl)
 
                  : corsServer.includes('replaceEncodedHere')
-                 ? corsServer.replace('replaceEncodedHere', encodeURI(url))
+                 ? corsServer.replace('replaceEncodedHere', encodeURI(refreshUrl))
 
                  : corsServer.includes('replaceEncodedComponentHere')
-                 ? corsServer.replace('replaceEncodedComponentHere', encodeURIComponent(url))
+                 ? corsServer.replace('replaceEncodedComponentHere', encodeURIComponent(refreshUrl))
                  : ''
 
       if(!corsServer || !result) {
@@ -88,6 +95,15 @@
     // setting end ----------------------------------------------------------------------------
 
     // searching start ----------------------------------------------------------------------------
+    /*
+      selectedWatchParams = {
+        "prod": "miwear.watch.q66nfc","name":"미밴드11(내수용nfc)",
+        "width": "212", "height": "520", "link": "이미지링크",
+        "category": "미밴드", "category2": "미밴드11", "mainProd": "miwear.watch.q66cn"
+      }
+    */
+    let selectedWatchParams = {}
+
     const search = (page) => {
       if(!$("#selectServer").val() || !$("#selectServer").val().includes("http")) {
         alert("서버를 선택해주세요.")
@@ -96,15 +112,21 @@
         alert("기종을 선택해주세요.")
         return false
       }
+
+      selectedWatchParams = watchList.find(item => item.prod == $("#selectWatch").val())
       
       if(page) viewPage = page
-      if(page==1) $("#faceList").empty()
+      if(page==1) $("#faceList, #appList, #patchList").empty()
       
       searching()
       
       const origUrl = $("#selectServer").val().includes("watch-appstore.iot.mi.com")
                     ? $("#selectServer").val() + `get_watchface_list?size=500&model=${$("#selectWatch").val()}&page=${viewPage}`
-                    : $("#selectServer").val() + `index?data={"model":"${$("#selectWatch").val()}","page":${viewPage},"size":500}`
+                    
+                    : $("#selectServer").val().includes("miwatch.conversmod.ru")
+                    ? $("#selectServer").val() + `index?data={"model":"${$("#selectWatch").val()}","page":${viewPage},"size":500}`
+                    
+                    : $("#selectServer").val() + (viewPage>1 ? "nomore.result.here" : selectedWatchParams.mainProd) + "/info.json"
 
       const corsUrl = getCorsUrl(origUrl)
       if(!corsUrl) return
@@ -114,10 +136,12 @@
         type: "get",
         success: (result) => {
           try {
-            // 공식서버의 경우 json화 필요
+            // 일부서버의 경우 json화 필요
+            const res = typeof(result) == 'string' ? JSON.parse(result) : result
+
             let list = $("#selectServer").val().includes("watch-appstore.iot.mi.com")
-                      ? (typeof(result) == 'string' ? JSON.parse(result).data.feed_watchface_list : result.data.feed_watchface_list)
-                      : result.result.feed_watchface_list
+                      ? res.data.feed_watchface_list
+                      : res.result.feed_watchface_list
 
             showList(list)
           } catch(e) {
@@ -128,10 +152,15 @@
         error: (e) => {
           console.log(e)
           try {
-            // 사설서버
-            let list = JSON.parse(e.responseText.replace(/\n/g, "").replace(/\r/g, "").replace(/:,/g,':"",')).result.feed_watchface_list
+            // raw content 404
+            if (corsUrl.includes('raw.githubusercontent.com') && e.responseText.includes('404')) {
+              viewNoMore()
+            } else {
+              // 사설서버
+              let list = JSON.parse(e.responseText.replace(/\n/g, "").replace(/\r/g, "").replace(/:,/g,':"",')).result.feed_watchface_list
 
-            showList(list)
+              showList(list)
+            }
           } catch(f) {
             alert("오류발생1 : " + JSON.stringify(e) + ", 오류발생2 : " + JSON.stringify(f))
             viewMore()
@@ -171,14 +200,21 @@
         if(!$("#selectServer").val().includes("watch-appstore.iot.mi.com")) {
 
           $.each(list, (i, param) => {
-            if(!param.icon.includes("mi-img.com")) viewList.push(param)
+            if(!param.icon.includes("mi-img.com") && !param.icon.includes("xiaomiwear.com")) viewList.push(param)
           })
 
           list = viewList
         }
 
         // 목록생성
-        $.each(list, (i, param) => { $("#faceList").append(makeList(param)) })
+        $.each(list, (i, param) => {
+          let addList = (param.tabName == "quickApp")
+                      ? "appList"
+                      : (param.tabName == "patch")
+                      ? "patchList"
+                      : "faceList"
+          $("#"+addList).append(makeList(param))
+        })
         
         viewMore()
         viewPage++
@@ -244,16 +280,22 @@
     }
     
     const makeList = (param) => {
+      const roundness = selectedWatchParams.category == "미밴드"
+                      ? "rounded-pill"
+                      : selectedWatchParams.category == "샤오미워치"
+                      ? "rounded-circle"
+                      : "rounded-5"
+
       let str = `
         <div class="col-6 col-md-4 col-lg-3 col-xl-2 p-2">
           <div class="border rounded p-3">
-            <img class="img-fluid w-100" role="button" src="${param.icon}" id="img_${param.id}" onclick="downFile('${param.config_file || param.config_file_v2 || ''}', '${param.id}')">
+            <img class="img-fluid w-100 ${roundness}" role="button" src="${param.icon}" id="img_${param.id}" onclick="downFile('${param.config_file || param.config_file_v2 || ''}', '${param.id}')">
             <div class='text-center mt-2'>
       `
 
       if(param.aod_icon) {
         str += `
-              <span class="badge text-bg-secondary" role="button" data-img="${param.icon}" data-aod="${param.aod_icon}" id="aod_${param.id}" onclick="viewAod('${param.id}')"> AOD </span>
+              <span class="badge text-bg-secondary" role="button" data-img="${param.icon}" data-aod="${param.aod_icon}" id="aod_${param.id}" onclick="viewAod('${param.id}')"> ${ (param.tabName == "quickApp" || param.tabName == "patch") ? "img" : "AOD"} </span>
         `
       }
 
@@ -261,9 +303,24 @@
               ${param.display_name}
             </div>
 
-            <div class='text-center mt-2'>
-              Price: ${param.price || 'free'}
+            <div class="d-flex justify-content-between">
+              <div class="text-truncate">
+                <i class="fa fa-gift text-danger" aria-hidden="true"></i> ${param.publish_name || "unknown"}
+              </div>
+              <div class="text-nowrap text-secondary">
+                <i class="fa fa-cloud-download" aria-hidden="true"></i> ${param.download_count}
+              </div>
             </div>
+
+            <details class="word-break-all">
+              <summary class="description text-secondary">
+                <div class="d-flex justify-content-between">
+                  <div>${param.introduction ? "▶ Description" : ""}</div>
+                  <div>${param.price ? ("Price: " + param.price) : ""}</div>
+                </div>
+              </summary>
+              ${escapeHtml(param.introduction).replaceAll('\n', '<br>')}
+            </details>
 
           </div>
         </div>
@@ -291,6 +348,16 @@
         $("#mode").text("Dark")
         window.localStorage.setItem("miFaceDownMode", "lightMode")
       }
+    }
+
+    const escapeHtml = (str) => {
+      if (!str) return ''
+      return str
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
     }
 
     let adCallback = () => {
@@ -396,8 +463,26 @@
     
     
     <!-- 목록 -->
-    <div class="col-12 row pe-0 pt-5 mt-5 mt-lg-0" id="faceList">
-    </div>
+    <details id="patchListDetail" class="col-12 pe-0 pt-5 mt-5 mt-lg-0" open>
+      <summary class="text-secondary">
+        Patch List
+      </summary>
+      <div class="col-12 row pe-0 mt-lg-0" id="patchList"></div>
+    </details>
+
+    <details id="appListDetail" class="col-12 pe-0 pt-5 mt-5 mt-lg-0" open>
+      <summary class="text-secondary">
+        App List
+      </summary>
+      <div class="col-12 row pe-0 mt-lg-0" id="appList"></div>
+    </details>
+
+    <details id="faceListDetail" class="col-12 pe-0 pt-5 mt-5 mt-lg-0" open>
+      <summary class="text-secondary">
+        WatchFace List
+      </summary>
+      <div class="col-12 row pe-0 mt-lg-0" id="faceList"></div>
+    </details>
     
     <div class="col-12 p-3 d-grid">
       <button class="btn btn-secondary search d-none" id="more" onclick="search()">
