@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="content-language" content="kr">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="referrer" content="no-referrer">
+
+  <meta name="title" content="워치페이스 업로드">
+  <link rel="icon" type="image/webp" href="../default/favicon.png">
+  
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script> 
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet">
+  <script>
+    $("html").addClass( localStorage.getItem("miFaceDownMode") || "darkMode" )
+  </script>
+  <title>워치페이스 업로드</title>
+  <style type="text/css">
+    body > div { margin: 0 !important }
+    html.lightMode .darkMode { color: black; background-color: white; }
+    .lightMode { color: black; background-color: white; }
+    .darkMode { color: white; background-color: black; }
+    html.darkMode .form-control, html.darkMode .form-select { color: white; background-color: black; }
+    html.darkMode .form-control::placeholder { color: #adb5bd; }
+    html.darkMode .btn-outline-secondary { color: #dee2e6; }
+    .word-break-all { word-break: break-all; }
+    .description { list-style: none; cursor: pointer; }
+    .panel { max-width: 760px; margin: auto; }
+  </style>
+  <script>
+    // setting start ----------------------------------------------------------------------------
+    const apiUrl = 'https://faceupload.w-peach.duckdns.org'
+    const watchListUrl = 'https://w-peach.duckdns.org/util/notion?url=' + encodeURIComponent('https://maga32.notion.site/d6818f3316f74127be7d5b53948651da')
+    const tokenKey = 'miFaceUploadToken'
+    const usernameRule = /^[A-Za-z0-9_-]{6,18}$/
+    const nicknameRule = /^[가-힣A-Za-z0-9_-]{2,16}$/
+    const passwordRule = /^(?=.*[A-Za-z])(?=.*[0-9])[!-~]{8,20}$/
+    let token = sessionStorage.getItem(tokenKey) || ''
+    let me = null
+    let faces = []
+    let watches = []
+    let xiaomiDevices = []
+    let flowId = ''
+    let xiaomiConfirmed = false
+    let editingFace = null
+    let imgCheckModel = null
+    // setting end ----------------------------------------------------------------------------
+
+    // common start ----------------------------------------------------------------------------
+    const request = async (method, path, data) => {
+      const response = await fetch(apiUrl + path, {
+        method,
+        headers: {'Content-Type': 'application/json', ...(token ? {Authorization: 'Bearer ' + token} : {})},
+        body: data === undefined ? undefined : JSON.stringify(data)
+      })
+      const result = await response.json().catch(() => ({}))
+      if(!response.ok) {
+        const error = Error(result.error || '서버 오류가 발생했습니다.')
+        error.status = response.status
+        throw error
+      }
+      return result
+    }
+
+    const escapeHtml = (str) => {
+      if (!str) return ''
+      return str
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+    }
+
+    const message = (text) => {
+      $('#message').html(`
+        <div class="toast show text-bg-secondary border-0">
+          <div class="d-flex">
+            <div class="toast-body"></div>
+            <button type="button" class="btn-close btn-close-white m-auto me-2" data-bs-dismiss="toast"></button>
+          </div>
+        </div>
+      `)
+      $('#message .toast-body').text(text)
+      setTimeout(() => $('#message').empty(), 5000)
+    }
+
+    const showSection = (name) => {
+      $('main > section').addClass('d-none')
+      $('#' + name).removeClass('d-none')
+    }
+
+    const submitForm = async (event, action) => {
+      event.preventDefault()
+      const button = $(event.target).find('button[type=submit], button:not([type])').first()
+      button.prop('disabled', true)
+      try { await action(event.target) }
+      catch(e) { message(e.message) }
+      finally { button.prop('disabled', false) }
+    }
+
+    const showPasswordCheck = (value) => {
+      $('#newPasswordCheckRow').toggleClass('d-none', !value)
+      $('#profileForm [name=newPasswordCheck]').prop('required', !!value)
+    }
+
+    const modeChange = () => {
+      if($('#mode').text() == 'Dark') {
+        $('.lightMode').addClass('darkMode').removeClass('lightMode')
+        $('#mode').text('Light')
+        localStorage.setItem('miFaceDownMode', 'darkMode')
+      } else {
+        $('.darkMode').addClass('lightMode').removeClass('darkMode')
+        $('#mode').text('Dark')
+        localStorage.setItem('miFaceDownMode', 'lightMode')
+      }
+    }
+    // common end ----------------------------------------------------------------------------
+
+    // account start ----------------------------------------------------------------------------
+    const refreshAccount = async () => {
+      me = await request('GET', '/me')
+      faces = await request('GET', '/faces')
+      $('#accountName').text(me.nickname + ' (' + me.username + ')')
+      $('#profileForm [name=nickname]').val(me.nickname)
+      showSection('accountSection')
+      showDevices()
+      drawXiaomiWatches()
+      try { await loadWatches() }
+      catch(e) { message(e.message) }
+      showFaces()
+    }
+
+    const logout = async () => {
+      try { await request('POST', '/logout') }
+      catch(e) { message(e.message) }
+      token = ''
+      sessionStorage.removeItem(tokenKey)
+      me = null
+      showSection('loginSection')
+    }
+
+    const login = async (form) => {
+      const data = Object.fromEntries(new FormData(form))
+      const result = await request('POST', '/login', data)
+      token = result.token
+      sessionStorage.setItem(tokenKey, token)
+      form.reset()
+      await refreshAccount()
+    }
+
+    const signup = async (form) => {
+      const data = Object.fromEntries(new FormData(form))
+      if(!usernameRule.test(data.username)) throw Error('아이디는 6~18자의 영문, 숫자, _, -만 사용할 수 있습니다.')
+      if(!nicknameRule.test(data.nickname)) throw Error('닉네임은 2~16자의 한글, 영문, 숫자, _, -만 사용할 수 있습니다.')
+      if(!passwordRule.test(data.password)) throw Error('비밀번호는 8~20자의 영문과 숫자를 혼용해 입력해주세요.')
+      if(data.password != data.passwordCheck) throw Error('비밀번호 확인이 일치하지 않습니다.')
+      data.flowId = flowId
+      data.macs = $('#signupDevices input:checked').map((i, item) => item.value).get()
+      if(!data.macs.length) throw Error('기기를 하나 이상 선택해주세요.')
+      delete data.passwordCheck
+      await request('POST', '/signup', data)
+      form.reset()
+      flowId = ''
+      xiaomiConfirmed = false
+      xiaomiDevices = []
+      $('#signupDevices').empty()
+      showSection('loginSection')
+      message('회원가입이 완료되었습니다. 로그인해주세요.')
+    }
+
+    const updateProfile = async (form) => {
+      const data = Object.fromEntries(new FormData(form))
+      if(!nicknameRule.test(data.nickname)) throw Error('닉네임은 2~16자의 한글, 영문, 숫자, _, -만 사용할 수 있습니다.')
+      if(data.newPassword && !passwordRule.test(data.newPassword)) throw Error('새 비밀번호는 8~20자의 영문과 숫자를 혼용해 입력해주세요.')
+      if(data.newPassword && data.newPassword != data.newPasswordCheck) throw Error('새 비밀번호 확인이 일치하지 않습니다.')
+      delete data.newPasswordCheck
+      await request('PATCH', '/me', data)
+      form.reset()
+      $('#newPasswordCheckRow').addClass('d-none')
+      await refreshAccount()
+      message('회원 정보가 변경되었습니다.')
+    }
+    // account end ----------------------------------------------------------------------------
+
+    // device start ----------------------------------------------------------------------------
+    const startXiaomi = async (button) => {
+      button.disabled = true
+      const popup = window.open('about:blank', '_blank')
+      if(!popup) {
+        button.disabled = false
+        return message('팝업을 허용해주세요.')
+      }
+      popup.opener = null
+      popup.document.body.textContent = '샤오미 로그인 페이지를 준비하고 있습니다.'
+
+      let ready = false
+      try {
+        const result = await request('POST', '/xiaomi/start')
+        flowId = result.flowId
+        xiaomiConfirmed = false
+        xiaomiDevices = []
+        const box = me ? $('#addDevices') : $('#signupDevices')
+        box.html(`
+          <select class="form-select darkMode mt-2" id="xiaomiRegion" onchange="if(xiaomiConfirmed) showXiaomiWatches().catch(error => message(error.message))">
+            <option value="sg">한국·아시아</option>
+            <option value="cn">중국</option>
+            <option value="de">유럽</option>
+            <option value="us">미국</option>
+            <option value="ru">러시아</option>
+            <option value="i2">인도(i2)</option>
+            <option value="tw">대만</option>
+            <option value="in">인도(in)</option>
+          </select>
+          <div class="xiaomiCandidates mt-2">샤오미 로그인을 완료해주세요.</div>
+        `)
+        const approval = request('POST', '/xiaomi/confirm', {flowId})
+        popup.location.replace(result.loginUrl)
+        ready = true
+        message('새 창에서 샤오미 로그인을 완료해주세요.')
+        await approval
+        xiaomiConfirmed = true
+        await showXiaomiWatches()
+      } catch(e) { message(e.message) }
+      finally {
+        if(!ready) popup.close()
+        button.disabled = false
+      }
+    }
+
+    const showXiaomiWatches = async () => {
+      const region = $('#xiaomiRegion').val()
+      xiaomiDevices = await request('GET', '/xiaomi/watches?flowId=' + encodeURIComponent(flowId) + '&region=' + encodeURIComponent(region))
+      drawXiaomiWatches()
+      message('조회된 기기 ' + xiaomiDevices.length + '대')
+    }
+
+    const drawXiaomiWatches = () => {
+      const box = me ? $('#addDevices') : $('#signupDevices')
+      if(!box.find('.xiaomiCandidates').length) return
+      const selected = box.find('input:checked').map((i, input) => input.value).get()
+      const list = box.find('.xiaomiCandidates').empty()
+      $.each(xiaomiDevices, (i, device) => {
+        const registered = me?.devices.some(item => item.mac.toLowerCase() == device.mac.toLowerCase())
+        list.append(`
+          <label class="d-block py-1">
+            <input type="checkbox" class="form-check-input me-2" value="${escapeHtml(device.mac)}" ${registered ? 'disabled' : ''} ${selected.includes(device.mac) ? 'checked' : ''}>
+            ${escapeHtml(device.name)} / ${escapeHtml(device.model)} / ${escapeHtml(device.mac)} ${registered ? '(등록됨)' : ''}
+          </label>
+        `)
+      })
+      if(me) list.append('<div class="d-grid mt-2"><button type="button" class="btn btn-secondary" onclick="addDevices()">선택한 기기 등록</button></div>')
+    }
+
+    const showDevices = () => {
+      $('#myDevices').empty()
+      $.each(me.devices, (i, device) => {
+        $('#myDevices').append(`
+          <div class="d-flex align-items-center gap-2 border-bottom py-2">
+            <span class="me-auto word-break-all">${escapeHtml(device.name)} / ${escapeHtml(device.model)} / ${escapeHtml(device.mac)}</span>
+            <button class="btn btn-outline-danger btn-sm" onclick="removeDevice(${i})">삭제</button>
+          </div>
+        `)
+      })
+    }
+
+    const removeDevice = async (index) => {
+      const device = me.devices[index]
+      if(!device || !confirm('이 기기를 삭제하시겠습니까?')) return
+      try {
+        await request('DELETE', '/devices/' + encodeURIComponent(device.mac))
+        await refreshAccount()
+        showSection('deviceSection')
+      } catch(e) { message(e.message) }
+    }
+
+    const addDevices = async () => {
+      const macs = $('#addDevices input:checked').map((i, item) => item.value).get()
+      if(!macs.length) return message('기기를 선택해주세요.')
+      try {
+        await request('POST', '/devices', {flowId, macs})
+        flowId = ''
+        xiaomiConfirmed = false
+        xiaomiDevices = []
+        $('#addDevices').empty()
+        await refreshAccount()
+        showSection('deviceSection')
+        message('기기가 등록되었습니다.')
+      } catch(e) { message(e.message) }
+    }
+    // device end ----------------------------------------------------------------------------
+
+    // face start ----------------------------------------------------------------------------
+    const loadWatches = async () => {
+      if(!watches.length) {
+        const response = await fetch(watchListUrl + '&' + Date.now())
+        if(!response.ok) throw Error('기기 목록을 불러오지 못했습니다.')
+        watches = await response.json()
+      }
+      const models = [...new Set(me.devices.map(device => device.model))]
+      const select = $('#faceForm [name=model]')
+      select.html('<option value="">기기 선택</option>')
+      $.each(watches, (i, watch) => {
+        if(models.includes(watch.prod) && watch.mainProd) {
+          select.append(`<option value="${escapeHtml(watch.prod)}">${escapeHtml(watch.category2 || watch.name || watch.prod)}</option>`)
+        }
+      })
+    }
+
+    const openFace = async (face = null) => {
+      try {
+        await loadWatches()
+        editingFace = face
+        const form = $('#faceForm')[0]
+        form.reset()
+        form.elements.display_name.value = face?.display_name || ''
+        form.elements.tabName.value = face?.tabName || 'watchface'
+        form.elements.introduction.value = face?.introduction || ''
+        form.elements.model.value = face?.prod || ''
+        $('#faceHeading').text(face ? '항목 수정' : '새 항목 등록')
+        $('#faceModelRow').toggleClass('d-none', !!face)
+        $('#faceForm [name=model]').prop('required', !face)
+        $('#img1File, #configFile').prop('required', !face)
+        faceLabels()
+        showSection('faceSection')
+        loadImgCheck().catch(() => message('로드시 오류가 발생했습니다.'))
+      } catch(e) { message(e.message) }
+    }
+
+    const faceLabels = () => {
+      const form = $('#faceForm')[0]
+      const app = form.elements.tabName.value == 'quickApp'
+      const watch = watches.find(item => item.prod == form.elements.model.value)
+      const size = watch ? ` (*${watch.width}x${watch.height}px 이미지)` : ''
+      $('#configLabel').text((app ? '퀵앱(.rpk)' : '워치페이스(.bin)') + ' (*15mb 이하)')
+      $('#configFile').attr('accept', app ? '.rpk' : '.bin')
+      $('#img1Label').text('대표 이미지 (*3mb 이하)' + size)
+      $('#img2Label').text((app ? '두번째 이미지 (선택)' : 'aod 이미지 (선택)') + ' (*3mb 이하)' + size)
+    }
+
+    const showFaces = () => {
+      $('#myFaces').empty()
+      if(!faces.length) $('#myFaces').text('등록한 항목이 없습니다.')
+      $.each(faces, (i, face) => $('#myFaces').append(makeFace(face, i)))
+    }
+
+    const makeFace = (face, index) => {
+      const watch = watches.find(item => item.prod == face.prod)
+      const roundness = watch?.category == '미밴드' ? 'rounded-pill'
+                      : watch?.category == '샤오미워치' ? 'rounded-circle' : 'rounded-5'
+
+      return `
+        <div class="col-6 col-md-4 p-2">
+          <div class="border rounded p-3">
+            <div class="text-center text-secondary small mb-2">${escapeHtml(watch?.category2 || face.prod || face.model)} / ${escapeHtml(face.tabName)}</div>
+            <img class="img-fluid w-100 ${roundness}" src="${escapeHtml(face.icon)}" id="myImg_${index}">
+            <div class="text-center mt-2">
+              <span class="badge text-bg-secondary" role="button" data-img="${escapeHtml(face.icon)}" data-aod="${escapeHtml(face.aod_icon)}" id="myAod_${index}" onclick="viewMyAod(${index})">${face.tabName == 'quickApp' ? 'img' : 'AOD'}</span>
+              ${escapeHtml(face.display_name)}
+            </div>
+
+            <div class="d-flex justify-content-between">
+              <div class="small word-break-all">
+                <i class="fa fa-gift text-danger" aria-hidden="true"></i> ${escapeHtml(face.publish_name || 'unknown')}
+              </div>
+              <div class="text-nowrap text-secondary">
+                <i class="fa fa-cloud-download" aria-hidden="true"></i> ${face.download_count || 0}
+              </div>
+            </div>
+
+            <details class="word-break-all">
+              <summary class="description text-secondary">
+                <div class="d-flex justify-content-between">
+                  <div>${face.introduction ? '▶ Description' : ''}</div>
+                  <div>${face.price ? 'Price: ' + face.price : ''}</div>
+                </div>
+              </summary>
+              ${escapeHtml(face.introduction).replaceAll('\n', '<br>')}
+            </details>
+
+            <div class="d-flex gap-2 mt-2">
+              <button class="btn btn-outline-secondary btn-sm w-50" onclick="openFace(faces[${index}])">수정</button>
+              <button class="btn btn-outline-danger btn-sm w-50" onclick="removeFace(${index})">삭제</button>
+            </div>
+          </div>
+        </div>
+      `
+
+    }
+
+    const viewMyAod = (index) => {
+      const image = $('#myImg_' + index)
+      const badge = $('#myAod_' + index)
+      if(!badge.attr('data-aod')) return
+      const showAod = badge.attr('data-current') != 'aod'
+      badge.attr('data-current', showAod ? 'aod' : 'img')
+      image.attr('src', badge.attr(showAod ? 'data-aod' : 'data-img'))
+    }
+
+    const removeFace = async (index) => {
+      const face = faces[index]
+      if(!face || !confirm('이 항목을 삭제하시겠습니까?')) return
+      try {
+        await request('DELETE', '/faces/' + encodeURIComponent(face.model) + '/' + encodeURIComponent(face.id))
+        await refreshAccount()
+        message('항목이 삭제되었습니다.')
+      } catch(e) { message(e.message) }
+    }
+
+    const loadImgCheck = () => {
+      if(imgCheckModel) return imgCheckModel
+      imgCheckModel = (async () => {
+        for(const src of [
+          'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+          'https://cdn.jsdelivr.net/npm/nsfwjs@4.2.0/dist/browser/nsfwjs.min.js'
+        ]) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script')
+            script.src = src
+            script.onload = resolve
+            script.onerror = () => reject(Error('로드시 오류가 발생했습니다.'))
+            document.head.appendChild(script)
+          })
+        }
+        const key = 'indexeddb://miFaceImgCheckSmall'
+        const saved = await tf.io.listModels()
+        const model = await nsfwjs.load(saved[key] ? key : 'https://cdn.jsdelivr.net/gh/infinitered/nsfwjs@v4.2.0/models/mobilenet_v2/model.json')
+        if(!saved[key]) await model.model.save(key).catch(() => {})
+        return model
+      })().catch(() => {
+        imgCheckModel = null
+        throw Error('로드시 오류가 발생했습니다.')
+      })
+      return imgCheckModel
+    }
+
+    const fileData = async (file, image, width, height) => {
+      if(!file) return null
+      if(file.size > (image ? 3 : 15) * 1000 * 1000) throw Error(file.name + ' 용량을 확인해주세요.')
+      if(image) {
+        const url = URL.createObjectURL(file)
+        try {
+          const preview = new Image()
+          preview.src = url
+          await preview.decode()
+          if(width && height && (preview.naturalWidth != width || preview.naturalHeight != height)) throw Error(file.name + ` 이미지는 ${width}x${height}px이어야 합니다.`)
+          const predictions = await (await loadImgCheck()).classify(preview)
+          const unsafe = predictions.filter(item => ['Porn', 'Hentai', 'Sexy'].includes(item.className))
+            .reduce((sum, item) => sum + item.probability, 0)
+          if(unsafe >= 0.9) throw Error('업로드 불가능한 이미지입니다.')
+        } finally { URL.revokeObjectURL(url) }
+      }
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = () => reject(Error('파일을 읽지 못했습니다.'))
+        reader.readAsDataURL(file)
+      })
+      return {name: file.name, base64}
+    }
+
+    const saveFace = async (form) => {
+      const button = $(form).find('button').first().text('저장중')
+      await loadImgCheck().finally(() => button.text('저장'))
+      const model = editingFace?.prod || form.elements.model.value
+      const watch = watches.find(item => item.prod == model)
+      if(!watch) throw Error('기기를 선택해주세요.')
+      const data = {
+        display_name: form.elements.display_name.value.trim(),
+        tabName: form.elements.tabName.value,
+        introduction: form.elements.introduction.value,
+        files: {}
+      }
+      if(data.display_name.length < 2 || data.display_name.length > 24) throw Error('제목은 2~24자로 입력해주세요.')
+      if(data.introduction.length > 255) throw Error('설명은 255자 이하로 입력해주세요.')
+      const config = form.elements.config_file.files[0]
+      const expected = data.tabName == 'quickApp' ? '.rpk' : '.bin'
+      if(!editingFace && (!config || !form.elements.img1.files[0])) throw Error('본 파일과 대표 이미지를 선택해주세요.')
+      if(config && !config.name.toLowerCase().endsWith(expected)) throw Error('본 파일은 ' + expected + ' 파일이어야 합니다.')
+      if(editingFace && editingFace.tabName != data.tabName && !config) throw Error('분류를 바꾸려면 본 파일을 다시 선택해주세요.')
+      for(const field of ['config_file', 'img1', 'img2']) {
+        const file = form.elements[field].files[0]
+        if(file) data.files[field] = await fileData(file, field != 'config_file', Number(watch.width), Number(watch.height))
+      }
+      const path = editingFace ? '/faces/' + encodeURIComponent(editingFace.model) + '/' + encodeURIComponent(editingFace.id) : '/faces'
+      if(!editingFace) data.model = model
+      await request(editingFace ? 'PATCH' : 'POST', path, data)
+      editingFace = null
+      await refreshAccount()
+      message('항목이 저장되었습니다.')
+    }
+    // face end ----------------------------------------------------------------------------
+
+    $(document).ready(async () => {
+      if($('html').hasClass('lightMode')) {
+        $('#mode').text('Dark')
+        $('.darkMode').addClass('lightMode').removeClass('darkMode')
+      }
+      if(token) {
+        try { await refreshAccount() }
+        catch(e) {
+          if(e.status == 401) {
+            token = ''
+            sessionStorage.removeItem(tokenKey)
+          }
+          showSection('loginSection')
+          message(e.message)
+        }
+      }
+    })
+  </script>
+</head>
+<body class="darkMode">
+  <main class="panel p-3 pb-5">
+    <header class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="h4 m-0">워치페이스 업로드</h1>
+      <button class="btn btn-outline-secondary" id="mode" onclick="modeChange()">Light</button>
+    </header>
+
+    <div id="message" class="toast-container position-fixed top-0 start-50 translate-middle-x p-3" style="z-index: 1080"></div>
+
+    <section id="loginSection">
+      <h2 class="h5">로그인</h2>
+      <form id="loginForm" class="row g-2" onsubmit="submitForm(event, login)">
+        <div class="col-12"><input class="form-control darkMode" name="username" placeholder="아이디" required></div>
+        <div class="col-12"><input class="form-control darkMode" name="password" type="password" placeholder="비밀번호" required></div>
+        <div class="col-12 d-grid"><button class="btn btn-secondary">로그인</button></div>
+      </form>
+      <div class="d-grid mt-2"><button class="btn btn-outline-secondary" onclick="showSection('signupSection')">회원가입</button></div>
+    </section>
+    <section id="accountSection" class="d-none">
+      <div class="d-flex gap-2 align-items-center mb-3">
+        <strong id="accountName" class="me-auto"></strong>
+        <button class="btn btn-outline-secondary btn-sm" onclick="showSection('profileSection')">정보수정</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="logout()">로그아웃</button>
+      </div>
+      <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-secondary w-50" onclick="openFace()">새 항목 등록</button>
+        <button class="btn btn-outline-secondary w-50" onclick="showSection('deviceSection')">기기 관리</button>
+      </div>
+      <h2 class="h5">내 항목</h2>
+      <div id="myFaces" class="row g-2"></div>
+    </section>
+
+    <section id="profileSection" class="d-none">
+      <h2 class="h5">정보수정</h2>
+      <form id="profileForm" class="row g-2" onsubmit="submitForm(event, updateProfile)">
+        <div class="col-12"><input class="form-control darkMode" name="nickname" placeholder="닉네임 (2~16자)" required></div>
+        <div class="col-12"><input class="form-control darkMode" name="password" type="password" placeholder="현재 비밀번호" required></div>
+        <div class="col-12"><input class="form-control darkMode" name="newPassword" type="password" placeholder="새 비밀번호 (8~20자, 영문·숫자 혼용)" oninput="showPasswordCheck(this.value)"></div>
+        <div class="col-12 d-none" id="newPasswordCheckRow"><input class="form-control darkMode" name="newPasswordCheck" type="password" placeholder="새 비밀번호 확인"></div>
+        <div class="col-12 d-flex gap-2"><button class="btn btn-secondary w-50">저장</button><button type="button" class="btn btn-outline-secondary w-50" onclick="showSection('accountSection')">취소</button></div>
+      </form>
+    </section>
+
+    <section id="deviceSection" class="d-none">
+      <h2 class="h5">기기 관리</h2>
+      <div id="myDevices" class="mb-3"></div>
+      <div class="d-grid"><button class="btn btn-outline-secondary" onclick="startXiaomi(this)">기기 등록</button></div>
+      <div id="addDevices" class="mt-3"></div>
+      <div class="d-grid mt-2"><button class="btn btn-outline-secondary" onclick="showSection('accountSection')">돌아가기</button></div>
+    </section>
+
+    <section id="faceSection" class="d-none">
+      <h2 id="faceHeading" class="h5">새 항목 등록</h2>
+      <form id="faceForm" class="row g-2" onsubmit="submitForm(event, saveFace)">
+        <div class="col-12" id="faceModelRow"><select class="form-select darkMode" name="model" onchange="faceLabels()" required><option value="">기기 선택</option></select></div>
+        <div class="col-12"><input class="form-control darkMode" name="display_name" placeholder="제목 (2~24자)" required></div>
+        <div class="col-12"><select class="form-select darkMode" name="tabName" onchange="faceLabels()"><option value="watchface">워치페이스</option><option value="quickApp">퀵앱</option></select></div>
+        <div class="col-12"><textarea class="form-control darkMode" name="introduction" placeholder="설명 (최대 255자)" maxlength="255"></textarea></div>
+        <div class="col-12"><label id="configLabel" for="configFile">워치페이스(.bin) (*15mb 이하)</label><input id="configFile" class="form-control darkMode" name="config_file" type="file" accept=".bin"></div>
+        <div class="col-12"><label id="img1Label" for="img1File">대표 이미지 (*3mb 이하)</label><input id="img1File" class="form-control darkMode" name="img1" type="file" accept="image/*"></div>
+        <div class="col-12"><label id="img2Label" for="img2File">aod 이미지 (선택) (*3mb 이하)</label><input id="img2File" class="form-control darkMode" name="img2" type="file" accept="image/*"></div>
+        <div class="col-12 d-flex gap-2"><button class="btn btn-secondary w-50">저장</button><button type="button" class="btn btn-outline-secondary w-50" onclick="showSection('accountSection')">취소</button></div>
+      </form>
+    </section>
+
+    <section id="signupSection" class="d-none">
+      <h2 class="h5">회원가입</h2>
+      <form id="signupForm" class="row g-2" onsubmit="submitForm(event, signup)">
+        <div class="col-12"><input class="form-control darkMode" name="username" placeholder="아이디 (6~18자)" required></div>
+        <div class="col-12"><input class="form-control darkMode" name="nickname" placeholder="닉네임 (2~16자)" required></div>
+        <div class="col-12"><input class="form-control darkMode" name="password" type="password" placeholder="비밀번호 (8~20자, 영문·숫자 혼용)" required></div>
+        <div class="col-12"><input class="form-control darkMode" name="passwordCheck" type="password" placeholder="비밀번호 확인" required></div>
+        <div class="col-12 d-grid"><button type="button" class="btn btn-outline-secondary" onclick="startXiaomi(this)">샤오미 기기 확인</button></div>
+        <div class="col-12" id="signupDevices"></div>
+        <div class="col-12 d-grid"><button class="btn btn-secondary">회원가입</button></div>
+      </form>
+      <div class="d-grid mt-2"><button class="btn btn-outline-secondary" onclick="showSection('loginSection')">로그인으로</button></div>
+    </section>
+  </main>
+</body>
+
+</html>

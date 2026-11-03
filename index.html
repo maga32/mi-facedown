@@ -236,6 +236,12 @@
     }
 
     const downFile = (link, id) => {
+      // 다운로드 집계
+      if($("#selectServer").val().includes('raw.githubusercontent.com/maga32/mi-facedown-files/main/')) {
+        fetch(`https://faceupload.w-peach.duckdns.org/downloads/${encodeURIComponent(selectedWatchParams.mainProd)}/${encodeURIComponent(id)}`, {method: 'POST'})
+          .catch(() => {})
+      }
+
       // 공식서버
       if(link) {
         window.open(link, "_blank")
@@ -300,7 +306,7 @@
       }
 
       str += `
-              ${param.display_name}
+              ${escapeHtml(param.display_name)}
             </div>
 
             <div class="d-flex justify-content-between">
