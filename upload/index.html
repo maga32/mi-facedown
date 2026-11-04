@@ -166,7 +166,7 @@
       flowId = ''
       xiaomiConfirmed = false
       xiaomiDevices = []
-      $('#signupDevices').empty()
+      $('#signupDevices .xiaomiCandidates').empty()
       showSection('loginSection')
       message('회원가입이 완료되었습니다. 로그인해주세요.')
     }
@@ -203,19 +203,7 @@
         xiaomiConfirmed = false
         xiaomiDevices = []
         const box = me ? $('#addDevices') : $('#signupDevices')
-        box.html(`
-          <select class="form-select darkMode mt-2" id="xiaomiRegion" onchange="if(xiaomiConfirmed) showXiaomiWatches().catch(error => message(error.message))">
-            <option value="sg">한국·아시아</option>
-            <option value="cn">중국</option>
-            <option value="de">유럽</option>
-            <option value="us">미국</option>
-            <option value="ru">러시아</option>
-            <option value="i2">인도(i2)</option>
-            <option value="tw">대만</option>
-            <option value="in">인도(in)</option>
-          </select>
-          <div class="xiaomiCandidates mt-2">샤오미 로그인을 완료해주세요.</div>
-        `)
+        box.find('.xiaomiCandidates').text('샤오미 로그인을 완료해주세요.')
         const approval = request('POST', '/xiaomi/confirm', {flowId})
         popup.location.replace(result.loginUrl)
         ready = true
@@ -231,10 +219,16 @@
     }
 
     const showXiaomiWatches = async () => {
-      const region = $('#xiaomiRegion').val()
-      xiaomiDevices = await request('GET', '/xiaomi/watches?flowId=' + encodeURIComponent(flowId) + '&region=' + encodeURIComponent(region))
-      drawXiaomiWatches()
-      message('조회된 기기 ' + xiaomiDevices.length + '대')
+      const section = me ? $('#deviceSection') : $('#signupSection')
+      const region = section.find('.xiaomiRegion').val()
+      const button = section.find('.xiaomiStart').prop('disabled', true)
+      try {
+        xiaomiDevices = await request('GET', '/xiaomi/watches?flowId=' + encodeURIComponent(flowId) + '&region=' + encodeURIComponent(region))
+        drawXiaomiWatches()
+        message('조회된 기기 ' + xiaomiDevices.length + '대')
+      } finally {
+        button.prop('disabled', false)
+      }
     }
 
     const drawXiaomiWatches = () => {
@@ -242,6 +236,7 @@
       if(!box.find('.xiaomiCandidates').length) return
       const selected = box.find('input:checked').map((i, input) => input.value).get()
       const list = box.find('.xiaomiCandidates').empty()
+      if(!xiaomiDevices.length) list.text('해당지역에 조회된 워치가 없습니다. 다른지역을 선택해주세요')
       $.each(xiaomiDevices, (i, device) => {
         const registered = me?.devices.some(item => item.mac.toLowerCase() == device.mac.toLowerCase())
         list.append(`
@@ -284,7 +279,7 @@
         flowId = ''
         xiaomiConfirmed = false
         xiaomiDevices = []
-        $('#addDevices').empty()
+        $('#addDevices .xiaomiCandidates').empty()
         await refreshAccount()
         showSection('deviceSection')
         message('기기가 등록되었습니다.')
@@ -558,8 +553,16 @@
     <section id="deviceSection" class="d-none">
       <h2 class="h5">기기 관리</h2>
       <div id="myDevices" class="mb-3"></div>
-      <div class="d-grid"><button class="btn btn-outline-secondary" onclick="startXiaomi(this)">기기 등록</button></div>
-      <div id="addDevices" class="mt-3"></div>
+      <select class="form-select darkMode xiaomiRegion mb-2" onchange="if(xiaomiConfirmed) showXiaomiWatches().catch(error => message(error.message))">
+        <option value="sg">한국·아시아</option>
+        <option value="cn">중국</option>
+        <option value="de">유럽</option>
+        <option value="us">미국</option>
+        <option value="ru">러시아</option>
+        <option value="i2">인도(i2)</option>
+      </select>
+      <div class="d-grid"><button class="btn btn-outline-secondary xiaomiStart" onclick="startXiaomi(this)">기기 등록</button></div>
+      <div id="addDevices" class="mt-3"><div class="xiaomiCandidates"></div></div>
       <div class="d-grid mt-2"><button class="btn btn-outline-secondary" onclick="showSection('accountSection')">돌아가기</button></div>
     </section>
 
@@ -584,8 +587,16 @@
         <div class="col-12"><input class="form-control darkMode" name="nickname" placeholder="닉네임 (2~16자)" required></div>
         <div class="col-12"><input class="form-control darkMode" name="password" type="password" placeholder="비밀번호 (8~20자, 영문·숫자 혼용)" required></div>
         <div class="col-12"><input class="form-control darkMode" name="passwordCheck" type="password" placeholder="비밀번호 확인" required></div>
-        <div class="col-12 d-grid"><button type="button" class="btn btn-outline-secondary" onclick="startXiaomi(this)">샤오미 기기 확인</button></div>
-        <div class="col-12" id="signupDevices"></div>
+        <div class="col-12"><select class="form-select darkMode xiaomiRegion" onchange="if(xiaomiConfirmed) showXiaomiWatches().catch(error => message(error.message))">
+          <option value="sg">한국·아시아</option>
+          <option value="cn">중국</option>
+          <option value="de">유럽</option>
+          <option value="us">미국</option>
+          <option value="ru">러시아</option>
+          <option value="i2">인도(i2)</option>
+        </select></div>
+        <div class="col-12 d-grid"><button type="button" class="btn btn-outline-secondary xiaomiStart" onclick="startXiaomi(this)">샤오미 기기 확인</button></div>
+        <div class="col-12" id="signupDevices"><div class="xiaomiCandidates"></div></div>
         <div class="col-12 d-grid"><button class="btn btn-secondary">회원가입</button></div>
       </form>
       <div class="d-grid mt-2"><button class="btn btn-outline-secondary" onclick="showSection('loginSection')">로그인으로</button></div>
