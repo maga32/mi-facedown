@@ -1,6 +1,6 @@
 {
   "name": "mi-facedown",
-  "version": "4.0.0",
+  "version": "5.1",
   "scripts": {
     "build": "npm install && node download.js"
   },

@@ -70,7 +70,7 @@
     const corsServerUrl = "https://w-peach.duckdns.org/util/notion?url="+encodeURIComponent("https://maga32.notion.site/1978de6c334280cfb8e5eb88c13133be")+"&"+nowTime
     let corsServer = '' // 원하는 CORS우회 서버로 테스트 가능
     const getCorsUrl = (url) => {
-      const refreshUrl = url + "&" + Date.now()
+      const refreshUrl = url + ( postData ? "" : ("&" + Date.now()) )
 
       let result = url.includes('raw.githubusercontent.com')
                  ? url
@@ -92,6 +92,8 @@
 
       return result
     }
+
+    let postData = ""
     // setting end ----------------------------------------------------------------------------
 
     // searching start ----------------------------------------------------------------------------
@@ -123,17 +125,23 @@
       const origUrl = $("#selectServer").val().includes("watch-appstore.iot.mi.com")
                     ? $("#selectServer").val() + `get_watchface_list?size=500&model=${$("#selectWatch").val()}&page=${viewPage}`
                     
-                    : $("#selectServer").val().includes("miwatch.conversmod.ru")
-                    ? $("#selectServer").val() + `index?data={"model":"${$("#selectWatch").val()}","page":${viewPage},"size":500}`
+                    : $("#selectServer").val().includes("miwatch.de")
+                    ? $("#selectServer").val() + "mall/watchface/index"
                     
                     : $("#selectServer").val() + (viewPage>1 ? "nomore.result.here" : selectedWatchParams.mainProd) + "/info.json"
+
+      postData = $("#selectServer").val().includes("miwatch.de")
+               ? {"model": $("#selectWatch").val(), "page": viewPage, "size":500}
+               : ""
+
 
       const corsUrl = getCorsUrl(origUrl)
       if(!corsUrl) return
 
       $.ajax({
         url: corsUrl,
-        type: "get",
+        type: postData ? "post" : "get",
+        data: postData,
         success: (result) => {
           try {
             // 일부서버의 경우 json화 필요
@@ -248,7 +256,7 @@
 
       // m0tral 사설서버
       } else {
-        const origUrl = $("#selectServer").val() + `download?data={"did":"false","id":"${id}","model":"${$("#selectWatch").val()}"}`
+        const origUrl = $("#selectServer").val() + `paidwatchface/download?&model=${$("#selectWatch").val()}&id=${id}`
         const corsUrl = getCorsUrl(origUrl)
         if(!corsUrl) return
 
